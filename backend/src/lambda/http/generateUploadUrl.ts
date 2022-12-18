@@ -3,22 +3,20 @@ import 'source-map-support/register'
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import * as middy from 'middy'
 import { cors, httpErrorHandler } from 'middy/middlewares'
-
-import { createAttachmentPresignedUrl } from '../../helpers/attachmentUtils'
-import { createLogger } from '../../utils/logger';
-
-const logger = createLogger('attachment');
+import { generateAttachmentUrl, updateAttachmentUrl } from '../../businessLogic/todos'
+import { getUserId } from '../utils'
+import * as uuid from 'uuid'
 
 export const handler = middy(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    logger.info('Processing event: ', event);
-    const todoId = event.pathParameters.todoId;
-    const uploadUrl = createAttachmentPresignedUrl(todoId);
 
-    logger.info('Upload url: %s', uploadUrl);
+    const attachmentId = uuid.v4()
+    const uploadUrl = await generateAttachmentUrl(attachmentId)
+
+    await updateAttachmentUrl(getUserId(event), event.pathParameters.todoId, attachmentId)
 
     return {
-      statusCode: 202,
+      statusCode: 200,
       body: JSON.stringify({
         uploadUrl
       })
@@ -28,9 +26,8 @@ export const handler = middy(
 
 handler
   .use(httpErrorHandler())
-  .use(cors(
-    {
-      origin: "*",
-      credentials: true,
-    }
-  ))
+  .use(
+    cors({
+      credentials: true
+    })
+  )
