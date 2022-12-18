@@ -1,48 +1,81 @@
-import * as uuid from 'uuid';
+import { TodosAccess } from '../dataLayer/todosAcess'
+import { AttachmentUtils } from '../fileStorage/attachmentUtils';
+import { TodoItem } from '../models/TodoItem'
+import { CreateTodoRequest } from '../requests/CreateTodoRequest'
+import { UpdateTodoRequest } from '../requests/UpdateTodoRequest'
+import { createLogger } from '../utils/logger'
+import * as uuid from 'uuid'
+import * as createError from 'http-errors'
 
-import { TodoItem } from '../models/TodoItem';
-import { TodoAccess } from '../dataLayer/ToDoAccess';
-import { CreateTodoRequest } from '../requests/CreateTodoRequest';
-import { UpdateTodoRequest } from '../requests/UpdateTodoRequest';
+const logger = createLogger('todos')
 
-const todoAccess = new TodoAccess()
+const todosAccess = new TodosAccess()
+const attachmentUtil = new AttachmentUtils()
 
-export async function getTodos(userId: string): Promise<TodoItem[]> {
-  return todoAccess.getTodosForUser(userId);
-}
-
-export async function getTodo(userId: string, todoId: string): Promise<TodoItem> {
-  return todoAccess.getTodo(userId, todoId);
-}
-
-export async function updateTodo(userId: string, id: string, payload: UpdateTodoRequest) : Promise<void>{
-  return todoAccess.updateTodo(userId, id, payload);
-}
-
-export async function updateTodoAttachment(userId: string, id: string): Promise<void> {
-  return todoAccess.updateTodoAttachment(userId, id);
-}
-
-export async function deleteTodo(userId: string, id: string): Promise<void> {
-  return todoAccess.deleteTodo(userId, id);
+export async function getTodos(userId: string) {
+  logger.info(`Retrieving all todos for user ${userId}`, { userId })
+  return await todosAccess.getAllTodos(userId)
 }
 
 export async function createTodo(
-  createTodoRequest: CreateTodoRequest,
-  userId: string
+  userId: string,
+  createTodoRequest: CreateTodoRequest
 ): Promise<TodoItem> {
-  const id = uuid.v4();
+  const todoId = uuid.v4()
 
-  return await todoAccess.createTodo({
-    id,
+  const newItem: TodoItem = {
     userId,
-    name: createTodoRequest.name,
-    done: false,
+    todoId,
     createdAt: new Date().toISOString(),
-    dueDate: createTodoRequest.dueDate
-  })
+    done: false,
+    attachmentUrl: null,
+    ...createTodoRequest
+  }
+
+  await todosAccess.createTodo(newItem)
+
+  return newItem
 }
 
-export async function todoExists(id: string): Promise<boolean> {
-  return await todoAccess.todoExists(id);
+async function checkTodo(userId: string, todoId: string) {
+  const existItem = await todosAccess.getTodoItem(userId, todoId)
+  if (!existItem) {
+    throw new createError.NotFound(`Todo with id: ${todoId} not found`)
+  }
+
+  if (existItem.userId !== userId) {
+    throw new createError.BadRequest('User not authorized to update item')
+  }
+}
+
+export async function updateTodo(
+  userId: string,
+  todoId: string,
+  updateRequest: UpdateTodoRequest
+) {
+  await checkTodo(userId, todoId)
+
+  todosAccess.updateTodoItem(userId, todoId, updateRequest)
+}
+
+export async function deleteTodo(userId: string, todoId: string) {
+  await checkTodo(userId, todoId)
+
+  todosAccess.deleteTodoItem(userId, todoId)
+}
+
+export async function updateAttachmentUrl(
+  userId: string,
+  todoId: string,
+  attachmentId: string
+) {
+  await checkTodo(userId, todoId)
+
+  const url = await attachmentUtil.getAttachmentUrl(attachmentId)
+
+  await todosAccess.updateAttachmentUrl(userId, todoId, url)
+}
+
+export async function generateAttachmentUrl(id: string): Promise<string> {
+  return await attachmentUtil.getUploadUrl(id)
 }
