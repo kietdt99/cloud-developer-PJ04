@@ -9,7 +9,7 @@ import { JwtPayload } from '../../auth/JwtPayload'
 
 const logger = createLogger('auth')
 
-const jwksUrl = 'https://dev-9kypell8.us.auth0.com/.well-known/jwks.json'
+const jwksUrl = 'https://dev-1krxcqb4sfirg1i7.us.auth0.com/.well-known/jwks.json'
 
 export const handler = async (
   event: CustomAuthorizerEvent
@@ -54,43 +54,20 @@ export const handler = async (
 async function verifyToken(authHeader: string): Promise<JwtPayload> {
   const token = getToken(authHeader)
   const jwt: Jwt = decode(token, { complete: true }) as Jwt
+  const response = await Axios.get(jwksUrl)
 
-  const key = await getSigningKey(jwksUrl, jwt.header.kid)
-  return verify(token, key.publicKey, { algorithms: ['RS256'] }) as JwtPayload
+  const keys: any[] = response.data.keys
+  if (!keys || !keys.length) throw new Error('The JWKS endpoint did not contain any keys')
+
+  const signingKeys = keys.find(key => key.kid === jwt.header.kid)
+  if (!signingKeys) throw new Error(`Unable to find a signing key that matches: ${jwt.header.kid}`)
+
+  const certification = certToPem(signingKeys.x5c[0])
+
+  return verify(token, certification, { algorithms: ['RS256'] }) as JwtPayload
 }
 
-const getSigningKey = async (jwksUrlm, kid) => {
-  const res = await Axios.get(jwksUrlm, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Credentials': "'true'"
-    }
-  })
-  const keys = res.data.keys
-  const signingKeys = keys
-    .filter(
-      (key) =>
-        key.use === 'sig' && // JWK property `use` determines the JWK is for signing
-        key.kty === 'RSA' && // We are only supporting RSA
-        key.kid && // The `kid` must be present to be useful for later
-        key.x5c &&
-        key.x5c.length // Has useful public keys (we aren't using n or e)
-    )
-    .map((key) => {
-      return { kid: key.kid, nbf: key.nbf, publicKey: certToPEM(key.x5c[0]) }
-    })
-  const signingKey = signingKeys.find((key) => key.kid === kid)
-  if (!signingKey) {
-    throw new Error('Invalid signing keys')
-    logger.error('No signing keys found')
-  }
-
-  logger.info('Signing keys created successfully ', signingKey)
-  return signingKey
-}
-
-function certToPEM(cert) {
+function certToPem(cert: string): string {
   cert = cert.match(/.{1,64}/g).join('\n')
   cert = `-----BEGIN CERTIFICATE-----\n${cert}\n-----END CERTIFICATE-----\n`
   return cert
