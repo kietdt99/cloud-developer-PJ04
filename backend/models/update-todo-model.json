@@ -4,8 +4,9 @@
   "type": "object",
   "properties": {
     "name": {
-      "minLength": 1,
-      "type": "string"   
+      "type": "string",
+      "pattern": "^[^-\\s][a-zA-Z0-9_\\s-]+$",
+      "minLength": 5
     },
     "dueDate": {
       "type": "string"
