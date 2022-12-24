@@ -5,8 +5,9 @@
   "properties": {
     "name": {
       "type": "string",
+      "default": "untitled",
       "pattern": "^[^-\\s][a-zA-Z0-9_\\s-]+$",
-      "minLength": 5
+      "minLength": 1
     },
     "dueDate": {
       "type": "string"
